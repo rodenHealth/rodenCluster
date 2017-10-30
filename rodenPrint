@@ -1,0 +1,16 @@
+#!/bin/bash
+# ---- pak builder
+# ---- by tyler burnam
+
+
+if [ $# -eq 1 ]
+    then
+        # TODO: Check for valid
+        openssl enc -aes-256-cbc -d -in $1 -out $1_decrypt -k roden
+        cat $1_decrypt
+        printf "\n\nFile is available at: ./$1_decrypt"
+        rm $1
+    else
+        echo "usage: ./rodenPrint <filename.roden>"
+
+fi

@@ -1,0 +1,26 @@
+<roden>
+todo to defeat node.js once and for all
+</roden>
+<title> c implementation notes </title>
+<doc>
+TODO:
+
+Server
+-----
+- Receive a video from a client
+- Save the video to the filesystem
+- Stream the data as you get it from the client to ANY source
+- Investigate shared memory patterns | stream data into compute layer
+
+
+Compute Layer
+-------------
+- Recieve a video from the file system
+- Have a thread pool with many workers
+- One set to split the video into images (immediate while framecount < threadcount)
+- One set to analyze images with emotion recognition modules
+- Develop modules for each API call
+- One set to aggregate frames
+- Decompose audio is difficult, so we have to do this traditionally (but with stream as we receive it - talk to server)
+- One set to update firebase (we could use 1 thread)
+</doc>

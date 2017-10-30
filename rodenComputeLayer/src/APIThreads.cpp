@@ -63,15 +63,10 @@ void sendAPICallWithTimeout(int threadID)
         // Synchronize
         setBarrier();
         wait();
-
         if (threadID == 0) // Manager new line
         {
             cout << endl;
         }
-
-        // Synchronize
-        setBarrier();
-
         // Get next one
         item = frameQueue.pop();
     }

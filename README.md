@@ -1,9 +1,8 @@
 # Usage
 
 ```bash
-cd rodenComputeLayer
 make
 ./APIThreads
 ```
 
-This is just the framework
+This is just the framework for the compute layer

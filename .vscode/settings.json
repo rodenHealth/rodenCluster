@@ -1,0 +1,33 @@
+{
+    "files.associations": {
+        "ostream": "cpp",
+        "bitset": "cpp",
+        "__mutex_base": "cpp",
+        "__config": "cpp",
+        "__nullptr": "cpp",
+        "exception": "cpp",
+        "initializer_list": "cpp",
+        "new": "cpp",
+        "stdexcept": "cpp",
+        "typeinfo": "cpp",
+        "condition_variable": "cpp",
+        "queue": "cpp",
+        "thread": "cpp",
+        "__bit_reference": "cpp",
+        "__functional_base": "cpp",
+        "algorithm": "cpp",
+        "atomic": "cpp",
+        "chrono": "cpp",
+        "deque": "cpp",
+        "functional": "cpp",
+        "iterator": "cpp",
+        "limits": "cpp",
+        "locale": "cpp",
+        "memory": "cpp",
+        "ratio": "cpp",
+        "system_error": "cpp",
+        "tuple": "cpp",
+        "type_traits": "cpp",
+        "vector": "cpp"
+    }
+}

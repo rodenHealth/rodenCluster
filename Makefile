@@ -3,13 +3,13 @@ CFLAGS= -std=c++11 -Wall -pedantic -ggdb
 LOADERS=
 EXE=APIThreads
 
-UTIL_CFILES=util/RodenThreadLib.cpp
-UTIL_HFILES=util/RodenThreadLib.h util/RodenLockedQueue.h
-UTIL_OFILES=util/RodenThreadLib.o
+UTIL_CFILES=rodenComputeLayer/util/RodenThreadLib.cpp
+UTIL_HFILES=rodenComputeLayer/util/RodenThreadLib.h rodenComputeLayer/util/RodenLockedQueue.h
+UTIL_OFILES=rodenComputeLayer/util/RodenThreadLib.o
 
-P1_CFILES=$(UTIL_CFILES) src/APIThreads.cpp
+P1_CFILES=$(UTIL_CFILES) rodenComputeLayer/src/APIThreads.cpp
 P1_HFILES=$(UTIL_HILES)
-P1_OFILES=$(UTIL_OFILES) src/APIThreads.o
+P1_OFILES=$(UTIL_OFILES) rodenComputeLayer/src/APIThreads.o
 
 
 OFILES=$(P1_OFILES)

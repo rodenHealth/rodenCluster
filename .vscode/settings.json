@@ -28,6 +28,9 @@
         "system_error": "cpp",
         "tuple": "cpp",
         "type_traits": "cpp",
-        "vector": "cpp"
+        "vector": "cpp",
+        "mutex": "cpp",
+        "*.ipp": "cpp",
+        "__locale": "cpp"
     }
 }

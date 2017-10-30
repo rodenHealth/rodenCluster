@@ -1,8 +1,9 @@
 # Usage
 
 ```bash
+cd ./rodenComputeLayer
 make
-./APIThreads
+./ThreadPool
 ```
 
 This is just the framework for the compute layer

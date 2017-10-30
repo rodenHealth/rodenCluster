@@ -57,12 +57,8 @@ void sendAPICallWithTimeout(int threadID)
     while (item != -1)
     {
 
-        sendAPICall(); // TODO
-
+        sendAPICall();         // TODO
         print(threadID, item); // Debug
-
-        // Get next one
-        item = frameQueue.pop();
 
         // Synchronize
         setBarrier();
@@ -72,8 +68,12 @@ void sendAPICallWithTimeout(int threadID)
         {
             cout << endl;
         }
+
         // Synchronize
         setBarrier();
+
+        // Get next one
+        item = frameQueue.pop();
     }
 }
 

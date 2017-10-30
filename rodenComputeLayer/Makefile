@@ -4,7 +4,7 @@ LOADERS=
 EXE=APIThreads
 
 UTIL_CFILES=util/RodenThreadLib.cpp
-UTIL_HFILES=util/RodenThreadLib.h
+UTIL_HFILES=util/RodenThreadLib.h util/RodenLockedQueue.h
 UTIL_OFILES=util/RodenThreadLib.o
 
 P1_CFILES=$(UTIL_CFILES) src/APIThreads.cpp

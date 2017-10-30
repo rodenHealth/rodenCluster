@@ -1,8 +1,3 @@
-<roden>
-todo to defeat node.js once and for all
-</roden>
-<title> c implementation notes </title>
-<doc>
 TODO:
 
 Server
@@ -23,4 +18,4 @@ Compute Layer
 - One set to aggregate frames
 - Decompose audio is difficult, so we have to do this traditionally (but with stream as we receive it - talk to server)
 - One set to update firebase (we could use 1 thread)
-</doc>
+

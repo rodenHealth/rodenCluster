@@ -1,5 +1,5 @@
 CC=g++
-CFLAGS= -std=c++11 -Wall -pedantic -ggdb
+CFLAGS= -std=c++11 -Wall -pedantic -pthread -ggdb
 LOADERS=
 EXE=APIThreads
 

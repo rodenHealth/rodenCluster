@@ -31,6 +31,9 @@
         "vector": "cpp",
         "mutex": "cpp",
         "*.ipp": "cpp",
-        "__locale": "cpp"
+        "__locale": "cpp",
+        "cctype": "cpp",
+        "cstddef": "cpp",
+        "cstdlib": "cpp"
     }
 }

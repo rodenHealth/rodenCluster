@@ -4,7 +4,7 @@ LOADERS=
 EXE=ThreadPool
 
 UTIL_CFILES=
-UTIL_HFILES=../../util/RodenLockedQueue.h
+UTIL_HFILES=./util/RodenLockedQueue.h
 UTIL_OFILES=
 
 P1_CFILES=$(UTIL_CFILES) ./ThreadPool.cpp

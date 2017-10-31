@@ -6,7 +6,7 @@
 #include <iostream>
 #include <unistd.h>
 #include <mutex>
-#include "../../util/RodenLockedQueue.h"
+#include "../util/RodenLockedQueue.h"
 
 using namespace std;
 

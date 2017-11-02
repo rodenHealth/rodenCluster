@@ -1,5 +1,5 @@
 CC=g++
-CFLAGS= -std=c++11 -Wall -pedantic -pthread -L/usr/local/Cellar/boost/1.65.1/lib -lboost_regex-mt -lboost_filesystem-mt -lboost_thread-mt -lboost_system -ggdb
+CFLAGS= -std=c++11 -Wall -pedantic -pthread -L/usr/local/Cellar/boost/1.65.1/lib -lboost_regex-mt -lboost_filesystem-mt -lboost_thread-mt -lboost_system -lcurl -ggdb
 LOADERS=
 EXE=ThreadPool
 

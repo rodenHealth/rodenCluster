@@ -6,9 +6,11 @@
 #include <iostream>
 #include <unistd.h>
 #include <mutex>
+#include <curl/curl.h>
 #include "../util/RodenLockedQueue.h"
 
 using namespace std;
+
 
 // Knobs
 #define NUMTHREADS 10
@@ -17,6 +19,7 @@ using namespace std;
 void wait(int seconds);
 void print(int thread, int item);
 void threadHandler(boost::barrier &cur_barier, int current);
+bool sendFrame(int item);
 
 // Shared memory
 mutex printMutex;
@@ -28,6 +31,9 @@ Queue<int> frameQueue;
 // Entry point
 int main()
 {
+	int item = 0;
+sendFrame(item);	
+	/*
     // This is a debug step, we're loading 100 "images"
     for (int i = 0; i < 100; i++)
     {
@@ -47,7 +53,7 @@ int main()
     }
 
     // Wait for threads to complete
-    threads.join_all();
+    threads.join_all();*/
 }
 
 // Main handler for thread
@@ -60,7 +66,7 @@ void threadHandler(boost::barrier &cur_barier, int current)
         item = frameQueue.pop();
 
         // TODO: API CALL HERE
-        print(current, item);
+		sendFrame(item);
 
         // Sync
         cur_barier.wait();
@@ -97,3 +103,26 @@ void print(int thread, int item)
     cout << "Thread [" << thread << "] sending API for image #" << item << endl;
     printMutex.unlock();
 }
+
+// Makes the API call for processing
+// TODO: This method still needs to send the actual frame instead of bogus data
+bool sendFrame(int item)
+{
+	std::string subscriptionKey = "566d7088f7bc40e2b9afdfc521f957e1";
+	std::string readBuffer;
+	CURL *curl;
+	CURLcode response;
+
+	curl = curl_easy_init();
+	if (curl) {
+		curl_easy_setopt(curl, CURLOPT_URL, "westus.api.cognitive.microsoft.com/emotion/v1.0/recognize");
+		//curl_easy_setopt(curl, CURLOPT_HEADER, "Ocp-Apim-Subscription-Key: 566d7088f7bc40e2b9afdfc521f957e1");
+		response = curl_easy_perform(curl);
+		std::cout << response << std::endl;	
+	}
+}
+
+
+
+
+ 

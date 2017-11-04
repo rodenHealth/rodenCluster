@@ -15,7 +15,7 @@ class Queue
         std::unique_lock<std::mutex> mlock(mutex_);
         if (queue_.empty())
         {
-            return -1;
+            return "";
         }
         auto value = queue_.front();
         queue_.pop();

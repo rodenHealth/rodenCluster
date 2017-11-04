@@ -2,6 +2,7 @@
 #include <boost/chrono.hpp>
 #include <boost/thread/barrier.hpp>
 #include <boost/bind.hpp>
+#include <boost/format.hpp>
 #include <boost/atomic.hpp>
 #include <iostream>
 #include <unistd.h>
@@ -9,6 +10,7 @@
 #include <curl/curl.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <ctime>
 #include "../util/RodenLockedQueue.h"
 
 using namespace std;
@@ -18,28 +20,42 @@ using namespace std;
 
 // Local methods
 void wait(int seconds);
-void print(int thread, int item);
+void print(int thread, string item);
 void threadHandler(boost::barrier &cur_barier, int current);
-bool sendFrame(int item);
+bool sendFrame(string imageURL);
 
 // Shared memory
 mutex printMutex;
+mutex exitMutex;
 mutex callsMadeMutex;
 
 // Locked queue: this should contain frames
-Queue<int> frameQueue;
+Queue<string> frameQueue;
 
 // Entry point
 int main()
 {
 
-    int item = 0;
-    sendFrame(item);
-    /*
+    // string fileURL = "https://github.com/rodenHealth/rodenCluster/blob/features/videoProcessing/rodenComputeLayer/VideoProcessor/tmp/frame_59.jpg?raw=true";
+    // frameQueue.push(fileURL);
+
+    // string fileURL2 = "https://github.com/rodenHealth/rodenCluster/blob/features/videoProcessing/rodenComputeLayer/VideoProcessor/tmp/frame_60.jpg?raw=true";
+    // frameQueue.push(fileURL2);
+    // sendFrame(fileURL);
+
     // This is a debug step, we're loading 100 "images"
-    for (int i = 0; i < 100; i++)
+    char frame[150];
+    int frameSize;
+    int start = 4;
+    int finish = 34;
+
+    int totalFrames = 0;
+
+    for (int i = start; i < finish; i++)
     {
-        frameQueue.push(i);
+        totalFrames++;
+        frameSize = sprintf(frame, "https://github.com/rodenHealth/rodenCluster/blob/features/videoProcessing/rodenComputeLayer/VideoProcessor/tmp/frame_%d.jpg?raw=true", i);
+        frameQueue.push(frame);
     }
 
     // Build thread pool
@@ -48,6 +64,8 @@ int main()
     // Build synchronization barrier
     boost::barrier bar(NUMTHREADS);
 
+    clock_t begin = clock();
+
     // Build threads, passing ref to barrier and ID
     for (int i = 0; i < NUMTHREADS; i++)
     {
@@ -55,41 +73,57 @@ int main()
     }
 
     // Wait for threads to complete
-    threads.join_all();*/
+    threads.join_all();
+
+    clock_t end = clock();
+    double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
+
+    cout << "Total time to process " << totalFrames << " records: " << elapsed_secs * totalFrames << endl;
+
+    return 0;
+}
+
+void printExit(int current)
+{
+    printMutex.lock();
+    cout << "Thread: " << current << " No more items, leaving..." << endl;
+    printMutex.unlock();   
+}
+
+void printMessage(int rank, string data)
+{
+    printMutex.lock();
+    cout << "Thread " << rank << " received: " << data << endl;
+    printMutex.unlock();   
 }
 
 // Main handler for thread
 void threadHandler(boost::barrier &cur_barier, int current)
 {
-    int item;
+    string item;
     do
     {
+        item = "";
+
         // Get frame from queue
         item = frameQueue.pop();
+
+        if (item == "")
+        {
+            // printExit(current);
+            return;
+        }
+        // printMessage(current, item);
 
         // TODO: API CALL HERE
         sendFrame(item);
 
-        // Sync
-        cur_barier.wait();
-
-        // Formatting for output
-        if (current == 0) // Manager
-        {
-            cout << endl;
-        }
-
-        // Sync back up
-        cur_barier.wait();
-        // boost::lock_guard<boost::mutex> locker(io_mutex);
-
         // Wait 1 together
         wait(1);
 
-        // Sync back up
-        cur_barier.wait();
+    } while (item != ""); // TODO: Condition to check if queue is empty
 
-    } while (item != -1); // TODO: Condition to check if queue is empty
+    return;
 }
 
 // Utility method to make a thread sleep
@@ -99,22 +133,39 @@ void wait(int seconds)
 }
 
 // Utility method to clean print thread ID
-void print(int thread, int item)
+void print(int thread, string item)
 {
     printMutex.lock();
-    cout << "Thread [" << thread << "] sending API for image #" << item << endl;
+    cout << "Thread [" << thread << "] sending API for image: " << item << endl;
     printMutex.unlock();
+}
+
+size_t callback(
+    const char* in,
+    std::size_t size,
+    std::size_t num,
+    std::string* out)
+{
+    const std::size_t totalBytes(size * num);
+    out->append(in, totalBytes);
+    return totalBytes;
 }
 
 // Makes the API call for processing
 // TODO: This method still needs to send the actual frame instead of bogus data
-bool sendFrame(int item)
+bool sendFrame(string imageURL)
 {
+
+    char postField[150];
+    int postFieldSize = sprintf(postField, "{'url':'%s'}", imageURL.c_str());
+
     curl_global_init(CURL_GLOBAL_ALL);
     std::string subscriptionKey = "566d7088f7bc40e2b9afdfc521f957e1";
     std::string readBuffer;
     CURL *curl = curl_easy_init();
     CURLcode response;
+    int httpCode(0);
+    std::unique_ptr<std::string> httpData(new std::string());
 
     FILE *fd = fopen("obama.jpg", "rb");
     if (!fd)
@@ -134,13 +185,22 @@ bool sendFrame(int item)
 
     if (curl)
     {
-        curl_easy_setopt(curl, CURLOPT_VERBOSE, "1");
+        
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, callback);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, httpData.get());
+        curl_easy_setopt(curl, CURLOPT_VERBOSE, 0);
         curl_easy_setopt(curl, CURLOPT_URL, "https://westus.api.cognitive.microsoft.com/emotion/v1.0/recognize");
         curl_easy_setopt(curl, CURLOPT_POST, "1");
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "{'url':'https://www.biography.com/.image/t_share/MTE4MDAzNDEwNzg5ODI4MTEw/barack-obama-12782369-1-402.jpg'}");
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, postField);
     }
     response = curl_easy_perform(curl);
-
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpCode);
     curl_global_cleanup();
+
+    if (httpCode == 200)
+    {
+        string *returnValue = httpData.get();
+        // cout << *httpData << endl;
+    }
 }

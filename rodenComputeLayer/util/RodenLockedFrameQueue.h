@@ -7,7 +7,7 @@
 #include <condition_variable>
 
 template <typename T>
-class Queue
+class FrameQueue
 {
   public:
     T pop()
@@ -40,9 +40,9 @@ class Queue
         mlock.unlock();
         cond_.notify_one();
     }
-    Queue() = default;
-    Queue(const Queue &) = delete;
-    Queue &operator=(const Queue &) = delete;
+    FrameQueue() = default;
+    FrameQueue(const FrameQueue &) = delete;
+    FrameQueue &operator=(const FrameQueue &) = delete;
 
   private:
     std::queue<T> queue_;

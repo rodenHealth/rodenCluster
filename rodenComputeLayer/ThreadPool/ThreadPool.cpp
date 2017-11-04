@@ -1,10 +1,16 @@
 #include <boost/thread.hpp>
 #include <boost/chrono.hpp>
 #include <boost/thread/barrier.hpp>
+#include <boost/algorithm/string/replace.hpp>
 #include <boost/bind.hpp>
 #include <boost/format.hpp>
 #include <boost/atomic.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
 #include <iostream>
+#include <string.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <mutex>
 #include <curl/curl.h>
@@ -12,44 +18,83 @@
 #include <fcntl.h>
 #include <ctime>
 #include "../util/RodenLockedQueue.h"
+#include "../util/RodenLockedFrameQueue.h"
 
 using namespace std;
 
 // Knobs
 #define NUMTHREADS 10
 
+// Struct
+typedef struct FrameData {
+    string path;
+    int id;
+} FrameData;
+
+typedef struct ResultData {
+    string result;
+    int id;
+} ResultData;
+
 // Local methods
 void wait(int seconds);
 void print(int thread, string item);
 void threadHandler(boost::barrier &cur_barier, int current);
-bool sendFrame(string imageURL);
+bool sendFrame(FrameData* frameData);
+size_t callback(const char* in, std::size_t size, std::size_t num, std::string* out);
+bool updateFirebase(string data);
+string createBaseRecord();
+string numToCharSuffix(int num);
 
 // Shared memory
 mutex printMutex;
 mutex exitMutex;
+mutex apiMutex;
 mutex callsMadeMutex;
 
 // Locked queue: this should contain frames
-Queue<string> frameQueue;
-Queue<string> resultQueue;
+Queue<FrameData*> frameQueue;
+Queue<ResultData*> resultQueue;
+
+// Shared memory (single-writer)
+string videoID;
+
+
+
+void updateFrame(int frameID, string frameData)
+{
+    char updateRequest[300];
+    int updateRequestSize = sprintf(updateRequest, "{\"frame%s\": %s}", numToCharSuffix(frameID).c_str(), frameData.c_str());
+    
+    updateFirebase(updateRequest);
+}
 
 // Entry point
 int main()
 {
+    videoID = createBaseRecord();
+
     // Load frames
-    char frame[150];
     int frameSize;
     int start = 4;
     int finish = 34;
 
     int totalFrames = 0;
 
+    FrameData* newFrame;
     for (int i = start; i < finish; i++)
     {
+        char frame[150];
         totalFrames++;
         frameSize = sprintf(frame, "https://github.com/rodenHealth/rodenCluster/blob/features/videoProcessing/rodenComputeLayer/VideoProcessor/tmp/frame_%d.jpg?raw=true", i);
-        frameQueue.push(frame);
+        
+        newFrame = new FrameData;
+        newFrame->path = frame;
+        newFrame->id = i;
+        
+        frameQueue.push(newFrame);
     }
+
 
     // Build thread pool
     boost::thread_group threads;
@@ -73,22 +118,6 @@ int main()
 
     cout << "Total time to process " << totalFrames << " records: " << elapsed_secs * totalFrames << endl << endl;
 
-    string garbage;
-    cout << "Press any key to print results... ";
-    cin.get();
-
-    string result;
-    while (1)
-    {
-        result = resultQueue.pop();
-
-        if (result == "")
-        {
-            break;
-        }
-        cout << result << endl;
-    }
-
     return 0;
 }
 
@@ -109,20 +138,19 @@ void printMessage(int rank, string data)
 // Main handler for thread
 void threadHandler(boost::barrier &cur_barier, int current)
 {
-    string item;
+    FrameData* item;
     do
     {
-        item = "";
+        item = NULL;
 
         // Get frame from queue
         item = frameQueue.pop();
 
-        if (item == "")
+        if (item == NULL)
         {
             // printExit(current);
             return;
         }
-        // printMessage(current, item);
 
         // TODO: API CALL HERE
         sendFrame(item);
@@ -130,7 +158,7 @@ void threadHandler(boost::barrier &cur_barier, int current)
         // Wait 1 together
         wait(1);
 
-    } while (item != ""); // TODO: Condition to check if queue is empty
+    } while (item != NULL); // TODO: Condition to check if queue is empty
 
     return;
 }
@@ -162,11 +190,11 @@ size_t callback(
 
 // Makes the API call for processing
 // TODO: This method still needs to send the actual frame instead of bogus data
-bool sendFrame(string imageURL)
+bool sendFrame(FrameData* frameData)
 {
 
     char postField[150];
-    int postFieldSize = sprintf(postField, "{'url':'%s'}", imageURL.c_str());
+    int postFieldSize = sprintf(postField, "{'url':'%s'}", frameData->path.c_str());
 
     curl_global_init(CURL_GLOBAL_ALL);
     std::string subscriptionKey = "566d7088f7bc40e2b9afdfc521f957e1";
@@ -209,8 +237,82 @@ bool sendFrame(string imageURL)
 
     if (httpCode == 200)
     {
-        string *returnValue = httpData.get();
-        // cout << *httpData << endl;
-        resultQueue.push(*httpData);  }
+        string returnValue = *httpData;
+        returnValue.erase(0, 1);
+        returnValue.erase(returnValue.size() - 1);
+        boost::replace_all(returnValue, "scores", "emotion");
+
+        updateFrame(frameData->id, returnValue);
+    }
 }
 
+bool updateFirebase(string data)
+{
+
+    char postURL[150];
+    int postURLSize = sprintf(postURL, "https://rodenweb.firebaseio.com/videos/%s.json?auth=Yc8tTOqD9uo8Jq4rcT6uXxsGdqlBltpIuvX1wAoB", videoID.c_str());
+
+    apiMutex.lock();
+    CURL *hnd = curl_easy_init();
+    
+    curl_easy_setopt(hnd, CURLOPT_CUSTOMREQUEST, "PATCH");
+    curl_easy_setopt(hnd, CURLOPT_URL, postURL);
+    
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "postman-token: 53c637cd-3932-6c31-33db-8bd972c40b86");
+    headers = curl_slist_append(headers, "cache-control: no-cache");
+    headers = curl_slist_append(headers, "content-type: application/json");
+    curl_easy_setopt(hnd, CURLOPT_HTTPHEADER, headers);
+    
+    curl_easy_setopt(hnd, CURLOPT_POSTFIELDS, data.c_str());
+    
+    CURLcode ret = curl_easy_perform(hnd);
+    apiMutex.unlock();
+}
+
+string createBaseRecord()
+{
+    boost::uuids::uuid uuid = boost::uuids::random_generator()();
+    string uuidString = boost::uuids::to_string(uuid);
+
+    CURL *hnd = curl_easy_init();
+    
+    curl_easy_setopt(hnd, CURLOPT_CUSTOMREQUEST, "PATCH");
+    curl_easy_setopt(hnd, CURLOPT_URL, "https://rodenweb.firebaseio.com/videos.json?auth=Yc8tTOqD9uo8Jq4rcT6uXxsGdqlBltpIuvX1wAoB");
+    
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "postman-token: 53c637cd-3932-6c31-33db-8bd972c40b86");
+    headers = curl_slist_append(headers, "cache-control: no-cache");
+    headers = curl_slist_append(headers, "content-type: application/json");
+    curl_easy_setopt(hnd, CURLOPT_HTTPHEADER, headers);
+    
+
+    char postField[150];
+    int postFieldSize = sprintf(postField, "{\"%s\": {\"timestamp\":\"%s\"}}", uuidString.c_str(), "1");
+    
+    curl_easy_setopt(hnd, CURLOPT_POSTFIELDS, postField);
+    
+    CURLcode ret = curl_easy_perform(hnd);
+
+    return uuidString;
+}
+
+string numToCharSuffix(int num)
+{
+	string letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+	
+	string suffix;
+	
+	int aCount = num / 26;
+	int sigDigit = num % 26;
+	
+	for (int i = 0; i < aCount; i++)
+	{
+		suffix.append("Z");
+	}
+	
+	suffix += letters[sigDigit];
+	
+	
+	return suffix;
+}

@@ -31,19 +31,12 @@ mutex callsMadeMutex;
 
 // Locked queue: this should contain frames
 Queue<string> frameQueue;
+Queue<string> resultQueue;
 
 // Entry point
 int main()
 {
-
-    // string fileURL = "https://github.com/rodenHealth/rodenCluster/blob/features/videoProcessing/rodenComputeLayer/VideoProcessor/tmp/frame_59.jpg?raw=true";
-    // frameQueue.push(fileURL);
-
-    // string fileURL2 = "https://github.com/rodenHealth/rodenCluster/blob/features/videoProcessing/rodenComputeLayer/VideoProcessor/tmp/frame_60.jpg?raw=true";
-    // frameQueue.push(fileURL2);
-    // sendFrame(fileURL);
-
-    // This is a debug step, we're loading 100 "images"
+    // Load frames
     char frame[150];
     int frameSize;
     int start = 4;
@@ -78,7 +71,23 @@ int main()
     clock_t end = clock();
     double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
 
-    cout << "Total time to process " << totalFrames << " records: " << elapsed_secs * totalFrames << endl;
+    cout << "Total time to process " << totalFrames << " records: " << elapsed_secs * totalFrames << endl << endl;
+
+    string garbage;
+    cout << "Press any key to print results... ";
+    cin.get();
+
+    string result;
+    while (1)
+    {
+        result = resultQueue.pop();
+
+        if (result == "")
+        {
+            break;
+        }
+        cout << result << endl;
+    }
 
     return 0;
 }
@@ -202,5 +211,6 @@ bool sendFrame(string imageURL)
     {
         string *returnValue = httpData.get();
         // cout << *httpData << endl;
-    }
+        resultQueue.push(*httpData);  }
 }
+

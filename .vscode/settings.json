@@ -35,6 +35,7 @@
         "cctype": "cpp",
         "cstddef": "cpp",
         "cstdlib": "cpp",
-        "string": "cpp"
+        "string": "cpp",
+        "iosfwd": "cpp"
     }
 }

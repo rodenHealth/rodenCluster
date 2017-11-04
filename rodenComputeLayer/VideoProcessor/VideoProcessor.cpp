@@ -94,7 +94,7 @@ void splitVideo(String filename, String outputDirectory, int precision)
 int main(int argc, char **argv)
 {
     // Sample usage
-    splitVideo("drop.avi", "./tmp/", 2);
+    splitVideo("expressions.mp4", "./tmp/", 2);
 
     return 0;
 }

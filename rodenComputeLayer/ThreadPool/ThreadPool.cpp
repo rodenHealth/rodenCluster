@@ -13,7 +13,6 @@
 
 using namespace std;
 
-
 // Knobs
 #define NUMTHREADS 10
 
@@ -34,10 +33,9 @@ Queue<int> frameQueue;
 int main()
 {
 
-
-	int item = 0;
-	sendFrame(item);	
-	/*
+    int item = 0;
+    sendFrame(item);
+    /*
     // This is a debug step, we're loading 100 "images"
     for (int i = 0; i < 100; i++)
     {
@@ -70,7 +68,7 @@ void threadHandler(boost::barrier &cur_barier, int current)
         item = frameQueue.pop();
 
         // TODO: API CALL HERE
-		sendFrame(item);
+        sendFrame(item);
 
         // Sync
         cur_barier.wait();
@@ -112,39 +110,37 @@ void print(int thread, int item)
 // TODO: This method still needs to send the actual frame instead of bogus data
 bool sendFrame(int item)
 {
-	curl_global_init(CURL_GLOBAL_ALL);
-	std::string subscriptionKey = "566d7088f7bc40e2b9afdfc521f957e1";
-	std::string readBuffer;
-	CURL *curl = curl_easy_init();
-	CURLcode response;
+    curl_global_init(CURL_GLOBAL_ALL);
+    std::string subscriptionKey = "566d7088f7bc40e2b9afdfc521f957e1";
+    std::string readBuffer;
+    CURL *curl = curl_easy_init();
+    CURLcode response;
 
-	FILE *fd = fopen("obama.jpg", "rb");
-	if (!fd) {
-		cout << "Cannot find file to send." << endl;
-		return 1;
-	}
-		
-	// Set required headers and remove unnecesary ones that libcurl automatically sets
-	struct curl_slist *headers = NULL;
-	headers = curl_slist_append(headers, "Ocp-Apim-Subscription-Key: 566d7088f7bc40e2b9afdfc521f957e1");
-	headers = curl_slist_append(headers, "Transfer-Encoding: chunked");
-	headers = curl_slist_append(headers, "Accept:");
-	headers = curl_slist_append(headers, "Expect:");
+    FILE *fd = fopen("obama.jpg", "rb");
+    if (!fd)
+    {
+        cout << "Cannot find file to send." << endl;
+        return 1;
+    }
 
+    // Set required headers and remove unnecesary ones that libcurl automatically sets
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "Ocp-Apim-Subscription-Key: 566d7088f7bc40e2b9afdfc521f957e1");
+    headers = curl_slist_append(headers, "Transfer-Encoding: chunked");
+    headers = curl_slist_append(headers, "Accept: application/json");
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, "Accept:");
+    headers = curl_slist_append(headers, "Expect:");
 
-	if (curl) {
-		curl_easy_setopt(curl, CURLOPT_VERBOSE, "1");
-		curl_easy_setopt(curl, CURLOPT_URL, "https://westus.api.cognitive.microsoft.com/emotion/v1.0");
-		curl_easy_setopt(curl, CURLOPT_POST, "1");
-		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "{'url':'https://www.biography.com/.image/t_share/MTE4MDAzNDEwNzg5ODI4MTEw/barack-obama-12782369-1-402.jpg'}");
-	}
-	response = curl_easy_perform(curl);
+    if (curl)
+    {
+        curl_easy_setopt(curl, CURLOPT_VERBOSE, "1");
+        curl_easy_setopt(curl, CURLOPT_URL, "https://westus.api.cognitive.microsoft.com/emotion/v1.0/recognize");
+        curl_easy_setopt(curl, CURLOPT_POST, "1");
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "{'url':'https://www.biography.com/.image/t_share/MTE4MDAzNDEwNzg5ODI4MTEw/barack-obama-12782369-1-402.jpg'}");
+    }
+    response = curl_easy_perform(curl);
 
-	curl_global_cleanup();
+    curl_global_cleanup();
 }
-
-
-
-
- 

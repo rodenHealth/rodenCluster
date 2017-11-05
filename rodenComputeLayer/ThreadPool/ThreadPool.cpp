@@ -17,13 +17,16 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <ctime>
+#include <fstream>
 #include "../util/RodenLockedQueue.h"
 #include "../util/RodenLockedFrameQueue.h"
+#include "../FirebaseLib/firebase.h"
 
 using namespace std;
 
 // Knobs
-#define NUMTHREADS 10
+#define NUMTHREADS 50
+#define SUBCOUNT 10
 
 // Struct
 typedef struct FrameData {
@@ -31,57 +34,84 @@ typedef struct FrameData {
     int id;
 } FrameData;
 
-typedef struct ResultData {
-    string result;
+typedef struct PerfData {
+    string apiEndpoint;
+    string timestamp;
     int id;
-} ResultData;
+    bool success;
+} PerfData;
+
+
 
 // Local methods
 void wait(int seconds);
 void print(int thread, string item);
 void threadHandler(boost::barrier &cur_barier, int current);
-bool sendFrame(FrameData* frameData);
+bool sendFrame(FrameData* frameData, string subscription, PerfData* perf);
 size_t callback(const char* in, std::size_t size, std::size_t num, std::string* out);
-bool updateFirebase(string data);
-string createBaseRecord();
-string numToCharSuffix(int num);
+void printMessage(int rank, string data);
+string getCurrentDateTime(bool useLocalTime);
+void writePerfToCSV();
+
 
 // Shared memory
 mutex printMutex;
 mutex exitMutex;
 mutex apiMutex;
-mutex callsMadeMutex;
+mutex errorMutex;
+mutex successMutex;
 
 // Locked queue: this should contain frames
 Queue<FrameData*> frameQueue;
-Queue<ResultData*> resultQueue;
+Queue<PerfData*> perfQueue;
 
 // Shared memory (single-writer)
-string videoID;
+FirebaseLib* fb;
+bool firstFinisher;
 
+// Perf counting
+int errorCount;
+int sendCount;
 
-
-void updateFrame(int frameID, string frameData)
+void updateSend()
 {
-    char updateRequest[300];
-    int updateRequestSize = sprintf(updateRequest, "{\"frame%s\": %s}", numToCharSuffix(frameID).c_str(), frameData.c_str());
-    
-    updateFirebase(updateRequest);
+    successMutex.lock();
+    sendCount++;
+    successMutex.unlock();
 }
+
+void updateError()
+{
+    errorMutex.lock();
+    errorCount++;
+    errorMutex.unlock();
+}
+
+void logger()
+{
+    cout << "[" << getCurrentDateTime(0) << "]: ";
+}
+
 
 // Entry point
 int main()
 {
-    videoID = createBaseRecord();
+    // Setup
+    FrameData* newFrame;
+    fb = new FirebaseLib();
+    sendCount = 0;
+    errorCount = 0;
+    int totalFrames = 0;    
 
     // Load frames
     int frameSize;
+
+    // TEMPORARY CODE
     int start = 4;
-    int finish = 34;
+    int finish = 35;
+    // --------------
 
-    int totalFrames = 0;
-
-    FrameData* newFrame;
+    // Push image URLS to queue (this will be paths once we refactor)
     for (int i = start; i < finish; i++)
     {
         char frame[150];
@@ -102,43 +132,143 @@ int main()
     // Build synchronization barrier
     boost::barrier bar(NUMTHREADS);
 
-    clock_t begin = clock();
+    
+    int threadCount = 0;
+
+    logger();
+    cout << "Building " << NUMTHREADS << " threads" << endl;
 
     // Build threads, passing ref to barrier and ID
     for (int i = 0; i < NUMTHREADS; i++)
     {
+        threadCount++;
         threads.add_thread(new boost::thread(threadHandler, boost::ref(bar), i));
     }
 
     // Wait for threads to complete
     threads.join_all();
 
-    clock_t end = clock();
-    double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
 
-    cout << "Total time to process " << totalFrames << " records: " << elapsed_secs * totalFrames << endl << endl;
+    // Final stats
+    logger();
+    if ((sendCount - errorCount) == totalFrames)
+    {
+        cout << "Successfully processed all " << totalFrames << " frames." << endl;
+    }
+    else
+    {
+        cout << "Some error occured and all frames were not processed...." << endl;
+    }
+    cout << endl << "-----------------------------------" << endl;
+    logger();
+    cout << "Built: " << threadCount << " threads" << endl;
+    logger();
+    cout << "Processed: " << totalFrames << " frames" << endl;
+    logger();
+    cout << "Sent: " << sendCount << " requests" << endl;
+    logger();
+    cout << "Failed: " << errorCount << endl;
+    logger();
+    cout << "Error rate: " << sendCount / (errorCount + 0.0) <<  "%" << endl;
+    cout << "-----------------------------------" << endl;
+
+
+    // Perf stuff
+    writePerfToCSV();
 
     return 0;
 }
 
-void printExit(int current)
+string getSubscriptionKey(int rank)
 {
-    printMutex.lock();
-    cout << "Thread: " << current << " No more items, leaving..." << endl;
-    printMutex.unlock();   
+    int disperse = rank % SUBCOUNT;
+
+    switch (disperse)
+    {
+        case 0:
+            return "566d7088f7bc40e2b9afdfc521f957e1";
+            break;
+        case 1:
+            return "ee39b7d84ada4c26859bbb51b391386f";
+            break;
+        case 2:
+            return "c2efe8fdff2244e6afeee461e28a6aa2";
+            break;
+        case 3:
+            return "d1b30e5430a048b1bc3e84c984a2e51e";
+            break;
+        case 4:
+            return "3a40a65192204751b51095bdfa18accc";
+            break;
+        case 5:
+            return "ae99acc5ec754d359c58234614aed1d4";
+            break;
+        case 6:
+            return "01e7e1fab05d4ca8adef35d61f0fd044";
+            break;
+        case 7:
+            return "39824523dc9545758d1d74013d5916fa";
+            break;
+        case 8:
+            return "a4b2f96e978b4416a50ac39ac54a6f18";
+            break;
+        case 9:
+            return "53b3740d68974de98ea2aec7d6829460";
+            break;
+        default:
+            return "";
+
+    }
 }
 
-void printMessage(int rank, string data)
+void writePerfToCSV()
 {
-    printMutex.lock();
-    cout << "Thread " << rank << " received: " << data << endl;
-    printMutex.unlock();   
+    PerfData* perf;
+    ofstream perfOutputFile;
+
+    char fileName[150];
+    sprintf(fileName, "bin/%s.csv", getCurrentDateTime(0).c_str());
+
+    perfOutputFile.open(fileName);
+
+    perfOutputFile << "Thread ID, Timestamp, API Endpoint (Subscription ID), Success?\n";
+    do
+    {
+        perf = perfQueue.pop();
+
+        if (perf != NULL)
+        {
+            perfOutputFile << perf->id << "," << perf->timestamp << "," <<  perf->apiEndpoint.c_str() << "," << perf->success << endl;
+        }
+    } while (perf != NULL);
+}
+
+mutex subMutex;
+void printSubscriptionData(int current, string sub)
+{
+    subMutex.lock();
+    cout << "Thread: " << current << " received: " << sub << endl;
+    subMutex.unlock();
+}
+
+void printSend(int current, string sub)
+{
+    subMutex.lock();
+    logger();
+    cout << "Thread: " << current << " sending to: " << sub << endl;
+    subMutex.unlock();
 }
 
 // Main handler for thread
 void threadHandler(boost::barrier &cur_barier, int current)
 {
+
+    string subscriptionKey = getSubscriptionKey(current);
+    // printSubscriptionData(current, subscriptionKey);
+
     FrameData* item;
+    PerfData* perf;
+
     do
     {
         item = NULL;
@@ -146,70 +276,54 @@ void threadHandler(boost::barrier &cur_barier, int current)
         // Get frame from queue
         item = frameQueue.pop();
 
-        if (item == NULL)
+        if (item != NULL)
         {
-            // printExit(current);
-            return;
+            // TODO: API CALL HERE
+
+        
+            // printSend(current, subscriptionKey);
+            perf = new PerfData();
+            perf->id = current;
+            perf->timestamp = getCurrentDateTime(0);
+            perf->apiEndpoint = subscriptionKey;
+
+            sendFrame(item, subscriptionKey, perf);
+            
+            // We sent one
+            updateSend();
+        
+            // Wait 1
+            wait(1);
         }
-
-        // TODO: API CALL HERE
-        sendFrame(item);
-
-        // Wait 1 together
-        wait(1);
 
     } while (item != NULL); // TODO: Condition to check if queue is empty
 
     return;
 }
 
-// Utility method to make a thread sleep
-void wait(int seconds)
-{
-    boost::this_thread::sleep_for(boost::chrono::seconds(seconds));
-}
-
-// Utility method to clean print thread ID
-void print(int thread, string item)
-{
-    printMutex.lock();
-    cout << "Thread [" << thread << "] sending API for image: " << item << endl;
-    printMutex.unlock();
-}
-
-size_t callback(
-    const char* in,
-    std::size_t size,
-    std::size_t num,
-    std::string* out)
-{
-    const std::size_t totalBytes(size * num);
-    out->append(in, totalBytes);
-    return totalBytes;
-}
-
 // Makes the API call for processing
 // TODO: This method still needs to send the actual frame instead of bogus data
-bool sendFrame(FrameData* frameData)
+bool sendFrame(FrameData* frameData, string subscription, PerfData* perf)
 {
 
     char postField[150];
     int postFieldSize = sprintf(postField, "{'url':'%s'}", frameData->path.c_str());
 
-    curl_global_init(CURL_GLOBAL_ALL);
-    std::string subscriptionKey = "566d7088f7bc40e2b9afdfc521f957e1";
+    // curl_global_init(CURL_GLOBAL_ALL);
+    // std::string subscriptionKey = "566d7088f7bc40e2b9afdfc521f957e1";
+    std::string subscriptionKey = subscription;
     std::string readBuffer;
     CURL *curl = curl_easy_init();
     CURLcode response;
     int httpCode(0);
     std::unique_ptr<std::string> httpData(new std::string());
 
-    FILE *fd = fopen("obama.jpg", "rb");
-    if (!fd)
-    {
-        cout << "Cannot find file to send." << endl;
-        return 1;
-    }
+    // FILE *fd = fopen("obama.jpg", "rb");
+    // if (!fd)
+    // {
+    //     cout << "Cannot find file to send." << endl;
+    //     return 1;
+    // }
 
     // Set required headers and remove unnecesary ones that libcurl automatically sets
     struct curl_slist *headers = NULL;
@@ -242,77 +356,74 @@ bool sendFrame(FrameData* frameData)
         returnValue.erase(returnValue.size() - 1);
         boost::replace_all(returnValue, "scores", "emotion");
 
-        updateFrame(frameData->id, returnValue);
+        perf->success = true;
+
+        fb->updateFrame(frameData->id, returnValue);
     }
+    else
+    {
+        perf->success = false;
+        updateError();
+        frameQueue.push(frameData);
+    }
+
+    perfQueue.push(perf);
+}
+void printExit(int current)
+{
+    printMutex.lock();
+    cout << "Thread: " << current << " No more items, leaving..." << endl;
+    printMutex.unlock();   
 }
 
-bool updateFirebase(string data)
+void printMessage(int rank, string data)
 {
-
-    char postURL[150];
-    int postURLSize = sprintf(postURL, "https://rodenweb.firebaseio.com/videos/%s.json?auth=Yc8tTOqD9uo8Jq4rcT6uXxsGdqlBltpIuvX1wAoB", videoID.c_str());
-
-    apiMutex.lock();
-    CURL *hnd = curl_easy_init();
-    
-    curl_easy_setopt(hnd, CURLOPT_CUSTOMREQUEST, "PATCH");
-    curl_easy_setopt(hnd, CURLOPT_URL, postURL);
-    
-    struct curl_slist *headers = NULL;
-    headers = curl_slist_append(headers, "postman-token: 53c637cd-3932-6c31-33db-8bd972c40b86");
-    headers = curl_slist_append(headers, "cache-control: no-cache");
-    headers = curl_slist_append(headers, "content-type: application/json");
-    curl_easy_setopt(hnd, CURLOPT_HTTPHEADER, headers);
-    
-    curl_easy_setopt(hnd, CURLOPT_POSTFIELDS, data.c_str());
-    
-    CURLcode ret = curl_easy_perform(hnd);
-    apiMutex.unlock();
+    printMutex.lock();
+    cout << "Thread " << rank << " received: " << data << endl;
+    printMutex.unlock();   
 }
 
-string createBaseRecord()
+// Utility method to make a thread sleep
+void wait(int seconds)
 {
-    boost::uuids::uuid uuid = boost::uuids::random_generator()();
-    string uuidString = boost::uuids::to_string(uuid);
-
-    CURL *hnd = curl_easy_init();
-    
-    curl_easy_setopt(hnd, CURLOPT_CUSTOMREQUEST, "PATCH");
-    curl_easy_setopt(hnd, CURLOPT_URL, "https://rodenweb.firebaseio.com/videos.json?auth=Yc8tTOqD9uo8Jq4rcT6uXxsGdqlBltpIuvX1wAoB");
-    
-    struct curl_slist *headers = NULL;
-    headers = curl_slist_append(headers, "postman-token: 53c637cd-3932-6c31-33db-8bd972c40b86");
-    headers = curl_slist_append(headers, "cache-control: no-cache");
-    headers = curl_slist_append(headers, "content-type: application/json");
-    curl_easy_setopt(hnd, CURLOPT_HTTPHEADER, headers);
-    
-
-    char postField[150];
-    int postFieldSize = sprintf(postField, "{\"%s\": {\"timestamp\":\"%s\"}}", uuidString.c_str(), "1");
-    
-    curl_easy_setopt(hnd, CURLOPT_POSTFIELDS, postField);
-    
-    CURLcode ret = curl_easy_perform(hnd);
-
-    return uuidString;
+    boost::this_thread::sleep_for(boost::chrono::seconds(seconds));
 }
 
-string numToCharSuffix(int num)
+// Utility method to clean print thread ID
+void print(int thread, string item)
 {
-	string letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-	
-	string suffix;
-	
-	int aCount = num / 26;
-	int sigDigit = num % 26;
-	
-	for (int i = 0; i < aCount; i++)
-	{
-		suffix.append("Z");
-	}
-	
-	suffix += letters[sigDigit];
-	
-	
-	return suffix;
+    printMutex.lock();
+    cout << "Thread [" << thread << "] sending API for image: " << item << endl;
+    printMutex.unlock();
+}
+
+size_t callback(
+    const char* in,
+    std::size_t size,
+    std::size_t num,
+    std::string* out)
+{
+    const std::size_t totalBytes(size * num);
+    out->append(in, totalBytes);
+    return totalBytes;
+}
+
+string getCurrentDateTime(bool useLocalTime) {
+    timeval curTime;
+    gettimeofday(&curTime, NULL);
+    int milli = curTime.tv_usec / 1000;
+    
+    time_t rawtime;
+    struct tm * timeinfo;
+    char buffer [80];
+    
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    
+    strftime(buffer, 80, "%Y-%m-%d %H:%M:%S", timeinfo);
+    
+    char currentTime[84] = "";
+    sprintf(currentTime, "%s:%d", buffer, milli);
+
+    return currentTime;
 }

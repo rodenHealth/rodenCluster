@@ -25,7 +25,7 @@
 using namespace std;
 
 // Knobs
-#define NUMTHREADS 50
+#define NUMTHREADS 100
 #define SUBCOUNT 10
 
 // Struct
@@ -108,7 +108,7 @@ int main()
 
     // TEMPORARY CODE
     int start = 4;
-    int finish = 35;
+    int finish = 65;
     // --------------
 
     // Push image URLS to queue (this will be paths once we refactor)

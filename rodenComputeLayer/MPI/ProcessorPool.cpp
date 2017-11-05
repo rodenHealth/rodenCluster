@@ -103,8 +103,8 @@ int main(int argc, char *argv[])
     string vidID;
     world.recv(0, 0, vidID);
     string subKey = getSubscriptionKey(rank, size);
-    int start = getStart(rank, size - 1, totalFramesToProcess);
-    int finish = getEnd(rank, size - 1, totalFramesToProcess);
+    int start = getStart(rank - 1, size - 1, totalFramesToProcess);
+    int finish = getEnd(rank - 1, size - 1, totalFramesToProcess);
     int frameCount;
 
     moodycamel::ConcurrentQueue<FrameData *> *driverQueue = buildQueue(start, finish, frameCount);

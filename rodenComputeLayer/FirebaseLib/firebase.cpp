@@ -91,7 +91,7 @@ bool FirebaseLib::updateFirebase(string data)
     char postURL[150];
     int postURLSize = sprintf(postURL, "https://rodenweb.firebaseio.com/videos/%s.json?auth=Yc8tTOqD9uo8Jq4rcT6uXxsGdqlBltpIuvX1wAoB", videoID.c_str());
 
-    apiMutex.lock();
+    // apiMutex.lock();
     CURL *hnd = curl_easy_init();
 
     curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, callback);
@@ -109,7 +109,7 @@ bool FirebaseLib::updateFirebase(string data)
     curl_easy_setopt(hnd, CURLOPT_POSTFIELDS, data.c_str());
 
     CURLcode ret = curl_easy_perform(hnd);
-    apiMutex.unlock();
+    // apiMutex.unlock();
 
     if (httpCode == 200)
     {

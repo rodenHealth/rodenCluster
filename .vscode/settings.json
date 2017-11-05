@@ -36,6 +36,20 @@
         "cstddef": "cpp",
         "cstdlib": "cpp",
         "string": "cpp",
-        "iosfwd": "cpp"
+        "iosfwd": "cpp",
+        "fstream": "cpp",
+        "__split_buffer": "cpp",
+        "__tree": "cpp",
+        "array": "cpp",
+        "list": "cpp",
+        "map": "cpp",
+        "set": "cpp",
+        "string_view": "cpp",
+        "utility": "cpp",
+        "valarray": "cpp",
+        "ctime": "cpp",
+        "iostream": "cpp",
+        "__string": "cpp",
+        "ios": "cpp"
     }
 }

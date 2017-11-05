@@ -6,30 +6,67 @@ using namespace std;
 #define NUMTHREADS 10
 #define SUBCOUNT 10
 
-// Shared memory (single-writer)
-bool firstFinisher;
+// Locked queues
+moodycamel::ConcurrentQueue<FrameData *> frameQueue;
+moodycamel::ConcurrentQueue<PerfData *> perfQueue;
 
-void ThreadPool::updateSend()
-{
-    successMutex.lock();
-    sendCount++;
-    successMutex.unlock();
-}
+mutex printMutex;
+mutex exitMutex;
+mutex apiMutex;
+mutex errorMutex;
+mutex successMutex;
+mutex subMutex;
 
-void ThreadPool::updateError()
-{
-    errorMutex.lock();
-    errorCount++;
-    errorMutex.unlock();
-}
+// Firebase lib
+FirebaseLib *fb;
 
-void ThreadPool::logger()
-{
-    cout << "[" << getCurrentDateTime(0) << "]: ";
-}
+// API Key
+string subscriptionKey;
+string videoID;
 
-Queue<PerfData *> ThreadPool::processQueue()
+// Perf counting
+int totalFrames;
+int errorCount;
+int sendCount;
+
+// Method prototypes
+void wait(int seconds);
+void print(int thread, string item);
+static void threadHandler(boost::barrier &cur_barier, int current);
+bool sendFrame(FrameData *frameData, string subscription, PerfData *perf);
+static size_t callback(const char *in, std::size_t size, std::size_t num, std::string *out);
+void printMessage(int rank, string data);
+void printSubscriptionData(int current, string sub);
+static string getCurrentDateTime(bool useLocalTime);
+void printSend(int current, string sub);
+void printExit(int current);
+void writePerfToCSV();
+void updateError();
+void updateSend();
+void logger();
+
+void processQueue(moodycamel::ConcurrentQueue<FrameData *> *q, int size, string subKey, string videoID)
 {
+
+    // Build firebase
+    subscriptionKey = subKey;
+    fb = new FirebaseLib(videoID, 0);
+
+    // Build frameQueue
+    totalFrames = size;
+
+    // Brute force copy (need a better locked queue)
+    for (int i = 0; i < totalFrames; i++)
+    {
+        FrameData *item;
+        bool found = q->try_dequeue(item);
+
+        if (found)
+        {
+            frameQueue.enqueue(item);
+        }
+    }
+
     // Build thread pool
     boost::thread_group threads;
 
@@ -79,123 +116,78 @@ Queue<PerfData *> ThreadPool::processQueue()
     writePerfToCSV();
 }
 
-ThreadPool::ThreadPool(Queue<FrameData *> q, int size)
-{
-
-    totalFrames = size;
-
-    // Brute force copy (need a better locked queue)
-    for (int i = 0; i < totalFrames; i++)
-    {
-        auto item = q.pop();
-        frameQueue.push(item);
-    }
-}
 // Entry point
-int main()
-{
-    Queue<FrameData *> driverQueue;
+// int main()
+// {
+//     string subscriptionKey = "";
+//     moodycamel::ConcurrentQueue<FrameData *> *driverQueue = new moodycamel::ConcurrentQueue<FrameData *>();
 
-    // Setup
-    FrameData *newFrame;
-    int frameCount = 0;
+//     // Setup
+//     FrameData *newFrame;
+//     int frameCount = 0;
 
-    // Load frames
-    int frameSize;
+//     // Load frames
+//     int frameSize;
 
-    // TEMPORARY CODE
-    int start = 4;
-    int finish = start + NUMTHREADS;
-    // --------------
+//     // TEMPORARY CODE
+//     int start = 4;
+//     int finish = start + NUMTHREADS;
+//     // --------------
 
-    // Push image URLS to queue (this will be paths once we refactor)
-    for (int i = start; i < finish; i++)
-    {
-        char frame[150];
-        frameCount++;
-        frameSize = sprintf(frame, "https://github.com/rodenHealth/rodenCluster/blob/features/videoProcessing/rodenComputeLayer/VideoProcessor/tmp/frame_%d.jpg?raw=true", i);
+//     // Push image URLS to queue (this will be paths once we refactor)
+//     for (int i = start; i < finish; i++)
+//     {
+//         char frame[150];
+//         frameCount++;
+//         frameSize = sprintf(frame, "https://github.com/rodenHealth/rodenCluster/blob/features/videoProcessing/rodenComputeLayer/VideoProcessor/tmp/frame_%d.jpg?raw=true", i);
 
-        newFrame = new FrameData;
-        newFrame->path = frame;
-        newFrame->id = i;
+//         newFrame = new FrameData;
+//         newFrame->path = frame;
+//         newFrame->id = i;
 
-        driverQueue.push(newFrame);
-    }
+//         driverQueue->enqueue(newFrame);
+//     }
 
-    return 0;
-}
+//     processQueue(driverQueue, frameCount, subscriptionKey);
 
-string ThreadPool::getSubscriptionKey(int rank)
-{
-    int disperse = rank % SUBCOUNT;
+//     return 0;
+// }
 
-    switch (disperse)
-    {
-    case 0:
-        return "566d7088f7bc40e2b9afdfc521f957e1";
-        break;
-    case 1:
-        return "ee39b7d84ada4c26859bbb51b391386f";
-        break;
-    case 2:
-        return "c2efe8fdff2244e6afeee461e28a6aa2";
-        break;
-    case 3:
-        return "d1b30e5430a048b1bc3e84c984a2e51e";
-        break;
-    case 4:
-        return "3a40a65192204751b51095bdfa18accc";
-        break;
-    case 5:
-        return "ae99acc5ec754d359c58234614aed1d4";
-        break;
-    case 6:
-        return "01e7e1fab05d4ca8adef35d61f0fd044";
-        break;
-    case 7:
-        return "39824523dc9545758d1d74013d5916fa";
-        break;
-    case 8:
-        return "a4b2f96e978b4416a50ac39ac54a6f18";
-        break;
-    case 9:
-        return "53b3740d68974de98ea2aec7d6829460";
-        break;
-    default:
-        return "";
-    }
-}
-
-void ThreadPool::writePerfToCSV()
+void writePerfToCSV()
 {
     PerfData *perf;
     ofstream perfOutputFile;
+    bool validPerfData;
 
     char fileName[150];
     sprintf(fileName, "bin/%s.csv", getCurrentDateTime(0).c_str());
 
+    char vidID[150];
+    sprintf(vidID, "Video ID: %s\n", videoID.c_str());
+
     perfOutputFile.open(fileName);
 
+    perfOutputFile << "VideoID: " << videoID << "\n";
     perfOutputFile << "Thread ID, Timestamp, API Endpoint (Subscription ID), Success?\n";
     do
     {
-        perf = perfQueue.pop();
+        validPerfData = perfQueue.try_dequeue(perf);
 
-        if (perf != NULL)
+        if (validPerfData)
         {
             perfOutputFile << perf->id << "," << perf->timestamp << "," << perf->apiEndpoint.c_str() << "," << perf->success << endl;
         }
-    } while (perf != NULL);
+    } while (validPerfData);
 }
 
-void ThreadPool::printSubscriptionData(int current, string sub)
+void printSubscriptionData(int current, string sub)
 {
     subMutex.lock();
     cout << "Thread: " << current << " received: " << sub << endl;
     subMutex.unlock();
 }
 
-void ThreadPool::printSend(int current, string sub)
+void printSend(int current, string sub)
 {
     subMutex.lock();
     logger();
@@ -204,23 +196,22 @@ void ThreadPool::printSend(int current, string sub)
 }
 
 // Main handler for thread
-void ThreadPool::threadHandler(boost::barrier &cur_barier, int current)
+void threadHandler(boost::barrier &cur_barier, int current)
 {
 
-    string subscriptionKey = getSubscriptionKey(current);
+    // string subscriptionKey = getSubscriptionKey(current);
     // printSubscriptionData(current, subscriptionKey);
 
     FrameData *item;
     PerfData *perf;
+    bool validFrame;
 
     do
     {
-        item = NULL;
-
         // Get frame from queue
-        item = frameQueue.pop();
+        validFrame = frameQueue.try_dequeue(item);
 
-        if (item != NULL)
+        if (validFrame)
         {
             // TODO: API CALL HERE
 
@@ -239,14 +230,14 @@ void ThreadPool::threadHandler(boost::barrier &cur_barier, int current)
             wait(1);
         }
 
-    } while (item != NULL); // TODO: Condition to check if queue is empty
+    } while (validFrame); // TODO: Condition to check if queue is empty
 
     return;
 }
 
 // Makes the API call for processing
 // TODO: This method still needs to send the actual frame instead of bogus data
-bool ThreadPool::sendFrame(FrameData *frameData, string subscription, PerfData *perf)
+bool sendFrame(FrameData *frameData, string subscription, PerfData *perf)
 {
 
     char postField[150];
@@ -307,19 +298,21 @@ bool ThreadPool::sendFrame(FrameData *frameData, string subscription, PerfData *
     {
         perf->success = false;
         updateError();
-        frameQueue.push(frameData);
+        frameQueue.enqueue(frameData);
     }
 
-    perfQueue.push(perf);
+    perfQueue.enqueue(perf);
+
+    return true;
 }
-void ThreadPool::printExit(int current)
+void printExit(int current)
 {
     printMutex.lock();
     cout << "Thread: " << current << " No more items, leaving..." << endl;
     printMutex.unlock();
 }
 
-void ThreadPool::printMessage(int rank, string data)
+void printMessage(int rank, string data)
 {
     printMutex.lock();
     cout << "Thread " << rank << " received: " << data << endl;
@@ -327,20 +320,20 @@ void ThreadPool::printMessage(int rank, string data)
 }
 
 // Utility method to make a thread sleep
-void ThreadPool::wait(int seconds)
+void wait(int seconds)
 {
     boost::this_thread::sleep_for(boost::chrono::seconds(seconds));
 }
 
 // Utility method to clean print thread ID
-void ThreadPool::print(int thread, string item)
+void print(int thread, string item)
 {
     printMutex.lock();
     cout << "Thread [" << thread << "] sending API for image: " << item << endl;
     printMutex.unlock();
 }
 
-size_t ThreadPool::callback(
+size_t callback(
     const char *in,
     std::size_t size,
     std::size_t num,
@@ -351,7 +344,7 @@ size_t ThreadPool::callback(
     return totalBytes;
 }
 
-string ThreadPool::getCurrentDateTime(bool useLocalTime)
+string getCurrentDateTime(bool useLocalTime)
 {
     timeval curTime;
     gettimeofday(&curTime, NULL);
@@ -370,4 +363,23 @@ string ThreadPool::getCurrentDateTime(bool useLocalTime)
     sprintf(currentTime, "%s:%d", buffer, milli);
 
     return currentTime;
+}
+
+void updateSend()
+{
+    successMutex.lock();
+    sendCount++;
+    successMutex.unlock();
+}
+
+void updateError()
+{
+    errorMutex.lock();
+    errorCount++;
+    errorMutex.unlock();
+}
+
+void logger()
+{
+    cout << "[" << getCurrentDateTime(0) << "]: ";
 }

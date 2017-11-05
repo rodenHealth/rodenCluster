@@ -2,21 +2,23 @@
 
 using namespace std;
 
-class FirebaseLib {
-private:
+class FirebaseLib
+{
+  private:
     mutex apiMutex;
     string videoID;
     string createBaseRecord();
     string numToCharSuffix(int);
     bool updateFirebase(string);
     static size_t callback(
-        const char* in,
+        const char *in,
         std::size_t size,
         std::size_t num,
-        std::string* out);
+        std::string *out);
 
-public:
-    FirebaseLib ();
+  public:
+    FirebaseLib(string &);
+    FirebaseLib(string vidID, int flag);
     string getVideoId();
     void updateFrame(int, string);
 };

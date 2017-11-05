@@ -23,7 +23,7 @@
 #include "../util/RodenLockedQueue.h"
 #include "../util/RodenLockedFrameQueue.h"
 #include "../FirebaseLib/firebase.h"
-#include "../util/RodenLockedQueue.h"
+#include "concurrentqueue.h"
 
 using namespace std;
 
@@ -42,43 +42,4 @@ typedef struct PerfData
     bool success;
 } PerfData;
 
-class ThreadPool
-{
-  private:
-    mutex printMutex;
-    mutex exitMutex;
-    mutex apiMutex;
-    mutex errorMutex;
-    mutex successMutex;
-    mutex subMutex;
-
-    FirebaseLib *fb;
-    Queue<FrameData *> frameQueue;
-    Queue<PerfData *> perfQueue;
-
-    int totalFrames;
-
-    // Perf counting
-    int errorCount;
-    int sendCount;
-
-    void wait(int seconds);
-    void print(int thread, string item);
-    static void threadHandler(boost::barrier &cur_barier, int current);
-    bool sendFrame(FrameData *frameData, string subscription, PerfData *perf);
-    static size_t callback(const char *in, std::size_t size, std::size_t num, std::string *out);
-    void printMessage(int rank, string data);
-    void printSubscriptionData(int current, string sub);
-    static string getCurrentDateTime(bool useLocalTime);
-    static string getSubscriptionKey(int rank);
-    void printSend(int current, string sub);
-    void printExit(int current);
-    void writePerfToCSV();
-    void updateError();
-    void updateSend();
-    void logger();
-
-  public:
-    ThreadPool(Queue<FrameData *> q, int size);
-    Queue<PerfData *> processQueue();
-};
+void processQueue(moodycamel::ConcurrentQueue<FrameData *> *q, int size, string subKey, string videoID);

@@ -23,9 +23,15 @@
 using namespace std;
 
 // Constructor - creates VIDEO ID
-FirebaseLib::FirebaseLib ()
+FirebaseLib::FirebaseLib(string &vidID)
 {
     videoID = createBaseRecord();
+    vidID = videoID;
+}
+
+FirebaseLib::FirebaseLib(string vidID, int flag)
+{
+    videoID = vidID;
 }
 
 // PUBLIC Method - updates a given frame in firebase
@@ -33,11 +39,11 @@ void FirebaseLib::updateFrame(int frameID, string frameData)
 {
     char updateRequest[300];
     int updateRequestSize = sprintf(updateRequest, "{\"frame%s\": %s}", numToCharSuffix(frameID).c_str(), frameData.c_str());
-    
+
     updateFirebase(updateRequest);
 }
 
-// PRIVATE Method - Creates the base record for the analysis 
+// PRIVATE Method - Creates the base record for the analysis
 string FirebaseLib::createBaseRecord()
 {
     int httpCode(0);
@@ -47,25 +53,24 @@ string FirebaseLib::createBaseRecord()
     string uuidString = boost::uuids::to_string(uuid);
 
     CURL *hnd = curl_easy_init();
-    
+
     curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, callback);
     curl_easy_setopt(hnd, CURLOPT_WRITEDATA, httpData.get());
     curl_easy_setopt(hnd, CURLOPT_VERBOSE, 0);
     curl_easy_setopt(hnd, CURLOPT_CUSTOMREQUEST, "PATCH");
     curl_easy_setopt(hnd, CURLOPT_URL, "https://rodenweb.firebaseio.com/videos.json?auth=Yc8tTOqD9uo8Jq4rcT6uXxsGdqlBltpIuvX1wAoB");
-    
+
     struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, "postman-token: 53c637cd-3932-6c31-33db-8bd972c40b86");
     headers = curl_slist_append(headers, "cache-control: no-cache");
     headers = curl_slist_append(headers, "content-type: application/json");
     curl_easy_setopt(hnd, CURLOPT_HTTPHEADER, headers);
-    
 
     char postField[150];
     int postFieldSize = sprintf(postField, "{\"%s\": {\"timestamp\":\"%s\"}}", uuidString.c_str(), "1");
-    
+
     curl_easy_setopt(hnd, CURLOPT_POSTFIELDS, postField);
-    
+
     CURLcode ret = curl_easy_perform(hnd);
 
     if (httpCode == 200)
@@ -88,21 +93,21 @@ bool FirebaseLib::updateFirebase(string data)
 
     apiMutex.lock();
     CURL *hnd = curl_easy_init();
-    
+
     curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, callback);
     curl_easy_setopt(hnd, CURLOPT_WRITEDATA, httpData.get());
     curl_easy_setopt(hnd, CURLOPT_VERBOSE, 0);
     curl_easy_setopt(hnd, CURLOPT_CUSTOMREQUEST, "PATCH");
     curl_easy_setopt(hnd, CURLOPT_URL, postURL);
-    
+
     struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, "postman-token: 53c637cd-3932-6c31-33db-8bd972c40b86");
     headers = curl_slist_append(headers, "cache-control: no-cache");
     headers = curl_slist_append(headers, "content-type: application/json");
     curl_easy_setopt(hnd, CURLOPT_HTTPHEADER, headers);
-    
+
     curl_easy_setopt(hnd, CURLOPT_POSTFIELDS, data.c_str());
-    
+
     CURLcode ret = curl_easy_perform(hnd);
     apiMutex.unlock();
 
@@ -117,28 +122,28 @@ bool FirebaseLib::updateFirebase(string data)
 // PRIVATE Method - used to keep firebase records in frame order (sequential read)
 string FirebaseLib::numToCharSuffix(int num)
 {
-	string letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-	
-	string suffix;
-	
-	int aCount = num / 26;
-	int sigDigit = num % 26;
-	
-	for (int i = 0; i < aCount; i++)
-	{
-		suffix.append("Z");
-	}
-	
-	suffix += letters[sigDigit];
-	
-	return suffix;
+    string letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    string suffix;
+
+    int aCount = num / 26;
+    int sigDigit = num % 26;
+
+    for (int i = 0; i < aCount; i++)
+    {
+        suffix.append("Z");
+    }
+
+    suffix += letters[sigDigit];
+
+    return suffix;
 }
 
 size_t FirebaseLib::callback(
-    const char* in,
+    const char *in,
     std::size_t size,
     std::size_t num,
-    std::string* out)
+    std::string *out)
 {
     const std::size_t totalBytes(size * num);
     out->append(in, totalBytes);
